@@ -173,12 +173,14 @@ class AnimationDrawable {
     }
 }
 ```
+
 显示下一帧，逻辑非常清晰，不再进行解析。
 
 > 小结: 这一段我们对Drawable的API进行了简单的梳理，略去了大量关于创建的API以及和开发不太紧密的API，完成了一次概览。
 > 更完善的认知需要再仔细研读源码内容，限于篇幅不再展开。
 
 ## DrawableInflater
+
 顾名思义，这是一个Drawable加载器，和LayoutInflater类似，从一种满足特定语法的语法式中解析出实例对象，显然，在Android中它用来处理xml语法的drawable资源文件。
 
 看一下文档：
@@ -198,8 +200,7 @@ class AnimationDrawable {
  */
 ```
 
-需要注意，从性能角度上，这种创建严重依赖于构建时的预处理，因此，目前不可能利用它和 **XmlPullParser** 一起 **在运行时解析一个xml文件** 并创建对象实例
-只适用于那些已经在资源编译阶段返回的XmlPullParser
+需要注意，从性能角度上，这种创建严重依赖于构建时的预处理，因此，目前不可能利用它和 **XmlPullParser** 一起 **在运行时解析一个xml文件** 并创建对象实例 只适用于那些已经在资源编译阶段返回的XmlPullParser
 
 我们知道，一个受检的xml document，会被解析为语法树，得到树中的标签节点和属性信息。
 
@@ -257,4 +258,379 @@ class DrawableInflater {
 ```
 
 如果您已经在第二小节自行对Drawable的子类进行了概览，应该对这些内容不陌生了。
+
+以Android项目模板为例，工程会创建一个启动图标：
+
+```xml
+
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+        xmlns:aapt="http://schemas.android.com/aapt"
+        android:width="108dp"
+        android:height="108dp"
+        android:viewportWidth="108"
+        android:viewportHeight="108">
+    <path
+        android:pathData="M31,63.928c0,0 6.4,-11 12.1,-13.1c7.2,-2.6 26,-1.4 26,-1.4l38.1,38.1L107,108.928l-32,-1L31,63.928z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="85.84757"
+                android:endY="92.4963"
+                android:startX="42.9492"
+                android:startY="49.59793"
+                android:type="linear">
+                <item
+                    android:color="#44000000"
+                    android:offset="0.0"/>
+                <item
+                    android:color="#00000000"
+                    android:offset="1.0"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="nonZero"
+        android:pathData="M65.3,45.828l3.8,-6.6c0.2,-0.4 0.1,-0.9 -0.3,-1.1c-0.4,-0.2 -0.9,-0.1 -1.1,0.3l-3.9,6.7c-6.3,-2.8 -13.4,-2.8 -19.7,0l-3.9,-6.7c-0.2,-0.4 -0.7,-0.5 -1.1,-0.3C38.8,38.328 38.7,38.828 38.9,39.228l3.8,6.6C36.2,49.428 31.7,56.028 31,63.928h46C76.3,56.028 71.8,49.428 65.3,45.828zM43.4,57.328c-0.8,0 -1.5,-0.5 -1.8,-1.2c-0.3,-0.7 -0.1,-1.5 0.4,-2.1c0.5,-0.5 1.4,-0.7 2.1,-0.4c0.7,0.3 1.2,1 1.2,1.8C45.3,56.528 44.5,57.328 43.4,57.328L43.4,57.328zM64.6,57.328c-0.8,0 -1.5,-0.5 -1.8,-1.2s-0.1,-1.5 0.4,-2.1c0.5,-0.5 1.4,-0.7 2.1,-0.4c0.7,0.3 1.2,1 1.2,1.8C66.5,56.528 65.6,57.328 64.6,57.328L64.6,57.328z"
+        android:strokeWidth="1"
+        android:strokeColor="#00000000"/>
+</vector>
+```
+
+其实就是机器人头的图标，它会被加载为`VectorDrawable`
+
+我们反推一下，调用者为：
+
+```java
+class DrawableInflater {
+    @NonNull
+    public Drawable inflateFromXml(@NonNull String name, @NonNull XmlPullParser parser,
+                                   @NonNull AttributeSet attrs, @Nullable Theme theme)
+            throws XmlPullParserException, IOException {
+        return inflateFromXmlForDensity(name, parser, attrs, 0, theme);
+    }
+
+
+    @NonNull
+    Drawable inflateFromXmlForDensity(@NonNull String name, @NonNull XmlPullParser parser,
+                                      @NonNull AttributeSet attrs, int density, @Nullable Theme theme)
+            throws XmlPullParserException, IOException {
+        // Inner classes must be referenced as Outer$Inner, but XML tag names
+        // can't contain $, so the <drawable> tag allows developers to specify
+        // the class in an attribute. We'll still run it through inflateFromTag
+        // to stay consistent with how LayoutInflater works.
+        if (name.equals("drawable")) {
+            name = attrs.getAttributeValue(null, "class");
+            if (name == null) {
+                throw new InflateException("<drawable> tag must specify class attribute");
+            }
+        }
+
+        //注意这里 --1
+        Drawable drawable = inflateFromTag(name);
+        if (drawable == null) {
+            //注意这里 --2
+            drawable = inflateFromClass(name);
+        }
+        drawable.setSrcDensityOverride(density);
+        //注意这里 --3
+        drawable.inflate(mRes, parser, attrs, theme);
+        return drawable;
+    }
+}
+```
+
+上面标记了3处注意点， 第一处即为内置的顶层drawable创建
+
+第二处我们稍后再看
+
+第三处将parser，属性和主题交给生成的Drawable继续解析。不同的Drawable子类按照自身特性实现自己的解析需求。
+
+以`LevelListDrawable`为例，我们知道它内部还可以添加Drawable作为不同的level，这是通过递归调用解析创建实现的， 最终追溯源码至Drawable
+
+```java
+public class LevelListDrawable {
+    private void inflateChildElements(Resources r, XmlPullParser parser, AttributeSet attrs,
+                                      Theme theme) throws XmlPullParserException, IOException {
+        //略
+        while ((type = parser.next()) != XmlPullParser.END_DOCUMENT
+                && ((depth = parser.getDepth()) >= innerDepth
+                || type != XmlPullParser.END_TAG)) {
+            //略
+
+            Drawable dr;
+            if (drawableRes != 0) {
+                dr = r.getDrawable(drawableRes, theme);
+            } else {
+                //略
+                //注意此处
+                dr = Drawable.createFromXmlInner(r, parser, attrs, theme);
+            }
+            mLevelListState.addLevel(low, high, dr);
+        }
+        onLevelChange(getLevel());
+    }
+}
+
+
+public class Drawable {
+
+    public static Drawable createFromXmlInner(@NonNull Resources r, @NonNull XmlPullParser parser,
+                                              @NonNull AttributeSet attrs, @Nullable Theme theme)
+            throws XmlPullParserException, IOException {
+        return createFromXmlInnerForDensity(r, parser, attrs, 0, theme);
+    }
+
+    @NonNull
+    static Drawable createFromXmlInnerForDensity(@NonNull Resources r,
+                                                 @NonNull XmlPullParser parser, @NonNull AttributeSet attrs, int density,
+                                                 @Nullable Theme theme) throws XmlPullParserException, IOException {
+        return r.getDrawableInflater().inflateFromXmlForDensity(parser.getName(), parser, attrs,
+                density, theme);
+    }
+}
+```
+
+我们再看第二处，当特定的tag未被匹配时，会使用反射方式尝试创建Drawable：
+
+```java
+class DrawableInflater {
+    @NonNull
+    private Drawable inflateFromClass(@NonNull String className) {
+        try {
+            Constructor<? extends Drawable> constructor;
+            synchronized (CONSTRUCTOR_MAP) {
+                constructor = CONSTRUCTOR_MAP.get(className);
+                if (constructor == null) {
+                    final Class<? extends Drawable> clazz =
+                            mClassLoader.loadClass(className).asSubclass(Drawable.class);
+                    constructor = clazz.getConstructor();
+                    CONSTRUCTOR_MAP.put(className, constructor);
+                }
+            }
+            return constructor.newInstance();
+        }
+        //略
+        catch (XXX e) {
+        }
+    }
+}
+```
+
+> Custom drawables
+> 
+> All versions of Android allow the Drawable class to be extended and used at run time in place 
+> of framework-provided drawable classes. Starting in API 24, custom drawables classes may also be used in XML.
+> Note: Custom drawable classes are only accessible from within
+> your application package. Other applications will not be able to load them.
+
+文档中有这样一段话，自定义的Drawable一直是可行的，但仅Api>=24时才能够用XML定义这样的资源。虽然没有仔细追溯版本源码，但应该和此处有关。
+
+
+> 小结：我们简单阅读了DrawableInflater的源码，了解了Android如何从xml资源得到Drawable对象。需要注意的是，我们没有阅读Resource#getDrawable
+> 的相关源码，这一块内容也很有意思，建议读者有时间自行阅读下。
+
+
+## 自定义一个Drawable
+
+终于来到这个环节了，为了更好的进行这个环节，我们新建一个WorkShop项目，我会按照文章中每一个小目标提出的一个小目标建立提交。
+[DrawableWorkShop](https://github.com/leobert-lan/DrawableWorkShop)
+
+### version 1 一个能绘制的自定义Drawable
+
+这里我们尽可能的简单，目标就是绘制一个字母，先定义类：
+
+```kotlin
+class LetterDrawable : Drawable() {
+    val tag = "LetterDrawable"
+
+    var letter: Char = 'A'
+
+    val paint = Paint().apply {
+        textSize = 60f
+        color = Color.CYAN
+    }
+
+    override fun draw(canvas: Canvas) {
+        Log.d(tag, "on draw")
+        canvas.drawText(letter.toString(), 60f, 60f, paint)
+    }
+
+    override fun setAlpha(alpha: Int) {
+        //ignore
+    }
+
+    override fun setColorFilter(colorFilter: ColorFilter?) {
+        //ignore
+    }
+
+    override fun getOpacity(): Int {
+        return PixelFormat.TRANSLUCENT
+    }
+}
+```
+
+字号字色，绘制字母的位置和内容都直接写死，
+
+定义资源：
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<osp.leobert.android.drawableworkshop.drawable.LetterDrawable
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    >
+
+</osp.leobert.android.drawableworkshop.drawable.LetterDrawable>
+```
+
+直接使用：得到结果：
+
+![version_1](./三思系列：重新认识Drawable/version_1.png)
+
+//TODO 远程图片
+
+
+
+### version 2 支持颜色和字号等可配
+
+我们将单个字符改为String，添加color和textSize成员变量，并将改动设置到paint
+
+添加属性定义：
+
+```xml
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <declare-styleable name="letter_drawable">
+        <attr name="android:text" format="string|reference"/>
+        <attr name="color" format="color|reference"/>
+        <attr name="android:textSize" format="dimension|reference"/>
+
+    </declare-styleable>
+
+</resources>
+```
+这样我们就可以进行资源配置和解析
+
+按照我们之前阅读的代码，我们需要覆写`inflate`以实现属性解析
+
+```kotlin
+class LetterDrawable {
+    override fun inflate(
+        r: Resources,
+        parser: XmlPullParser,
+        attrs: AttributeSet,
+        theme: Resources.Theme?
+    ) {
+        super.inflate(r, parser, attrs, theme)
+        val a: TypedArray = obtainAttributes(r, theme, attrs, R.styleable.letter_drawable)
+        letter = a.getString(R.styleable.letter_drawable_android_text) ?: "A"
+
+        textSize = a.getDimension(R.styleable.letter_drawable_android_textSize, 60f)
+        color = a.getColor(R.styleable.letter_drawable_color, Color.CYAN)
+
+        a.recycle()
+
+        paint.color = color
+        paint.textSize = textSize
+    }
+
+    private class Size(val type: Int) : ReadWriteProperty<LetterDrawable, Float?> {
+        private var prop: Float? = null
+        override fun getValue(thisRef: LetterDrawable, property: KProperty<*>): Float? {
+            return prop ?: thisRef.run {
+                val rect = Rect()
+                this.paint.getTextBounds(this.letter, 0, this.letter.length, rect)
+                val s = when (type) {
+                    0 -> rect.width()
+                    else -> rect.height()
+                }.toFloat()
+                prop = s
+                prop
+            }
+        }
+
+        override fun setValue(thisRef: LetterDrawable, property: KProperty<*>, value: Float?) {
+            prop = value
+        }
+
+    }
+
+    private var width by Size(0)
+    private var height by Size(1)
+
+    override fun draw(canvas: Canvas) {
+        Log.d(tag, "on draw,$letter , $height")
+        canvas.drawText(letter, 0f, height ?: 60f, paint)
+    }
+}
+```
+并且我们利用属性代理来封装计算宽高的细节（*只是利用了小技巧，可以减少不必要的重复测量*）
+
+修改我们资源：
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<osp.leobert.android.drawableworkshop.drawable.LetterDrawable
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:textSize="40sp"
+    app:color="#ff3c06"
+    android:text="@string/letters">
+
+
+</osp.leobert.android.drawableworkshop.drawable.LetterDrawable>
+
+```
+
+运行后我们得到这样的结果：
+![version_2](./三思系列：重新认识Drawable/version_2.png)
+
+### version 3: 正确处理宽高
+
+我们发现Drawable的位置是有问题的，对于TextView，并没有在文字之上（drawableTop），
+对于ImageView，并没有居中（默认 ScaleType.FIT_CENTER）。
+
+```kotlin
+class LetterDrawable {
+    var letter: String = "A"
+        set(value) {
+            field = value
+            width = null
+            height = null
+            invalidateSelf()
+        }
+
+    var color: Int = Color.CYAN
+        set(value) {
+            field = value
+            paint.color = value
+            invalidateSelf()
+        }
+
+    var textSize: Float = 60f
+        set(value) {
+            field = value
+            width = null
+            height = null
+            paint.textSize = value
+            invalidateSelf()
+        }
+
+    override fun getIntrinsicHeight(): Int {
+        return height?.toInt() ?: -1
+    }
+
+    override fun getIntrinsicWidth(): Int {
+        return width?.toInt() ?: -1
+    }
+}
+```
+
+并且当颜色、文字、字号变更时触发重新计算和重绘
+
+看一下结果：
+![version_3](./三思系列：重新认识Drawable/version_3.png)
+
+
+
+
+
+
 
