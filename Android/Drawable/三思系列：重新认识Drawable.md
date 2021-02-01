@@ -12,7 +12,7 @@
 
 这篇文章会比较长，先给出导图
 
-![guide.png](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/Drawable_guide.png)
+`![guide.png](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/Drawable_guide.png)`
 ![guide.png](./三思系列：重新认识Drawable/Drawable_guide.png)
 
 ## Drawable的设计意图
@@ -484,7 +484,7 @@ class LetterDrawable : Drawable() {
 
 直接使用：得到结果：
 
-![version_1](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/version_1.png)
+`![version_1](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/version_1.png)`
 ![version_1](./三思系列：重新认识Drawable/version_1.png)
 
 
@@ -583,8 +583,8 @@ class LetterDrawable {
 ```
 
 运行后我们得到这样的结果：
+`![version_2](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/version_2.png)`
 ![version_2](./三思系列：重新认识Drawable/version_2.png)
-![version_2](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/version_2.png)
 
 ### version 3: 正确处理宽高
 
@@ -629,8 +629,8 @@ class LetterDrawable {
 并且当颜色、文字、字号变更时触发重新计算和重绘
 
 看一下结果：
+`![version_3](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/version_3.png)`
 ![version_3](./三思系列：重新认识Drawable/version_3.png)
-![version_3](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/version_3.png)
 
 > 注：更多和Canvas和Paint的内容忽略，Padding和文字边距等细节忽略
 
@@ -848,8 +848,8 @@ class AnimLetterDrawable : Drawable(), Animatable2, Runnable {
 
 最终我们看一下效果： 大约从第四秒开始点击了start，中间点击了stop，随后又点击了start
 
+`![version_4](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/version_4.gif)`
 ![version_4](./三思系列：重新认识Drawable/version_4.gif)
-![version_4](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/version_4.gif)
 
 > 注：gif丢失了一定的连贯性，可以看一下录制的视频 
 > [链接](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/version_4.webm)
@@ -860,8 +860,8 @@ class AnimLetterDrawable : Drawable(), Animatable2, Runnable {
 其实细心的读者应该发现了，上面`Version 4`的代码已经可以让每个字母都动起来了。
 先来试一下效果，把Drawable资源的text改成Leobert，看一下效果:
 
+`![version_5](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/version_5.gif)`
 ![version_5](./三思系列：重新认识Drawable/version_5.gif)
-![version_5](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/version_5.gif)
 
 录制视频：[链接](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/version_5.webm)
 
