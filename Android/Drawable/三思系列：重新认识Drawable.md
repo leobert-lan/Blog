@@ -13,6 +13,7 @@
 这篇文章会比较长，先给出导图
 
 ![guide.png](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/Drawable_guide.png)
+![guide.png](./三思系列：重新认识Drawable/Drawable_guide.png)
 
 ## Drawable的设计意图
 
@@ -417,8 +418,8 @@ class DrawableInflater {
 ```
 
 > Custom drawables
-> 
-> All versions of Android allow the Drawable class to be extended and used at run time in place 
+>
+> All versions of Android allow the Drawable class to be extended and used at run time in place
 > of framework-provided drawable classes. Starting in API 24, custom drawables classes may also be used in XML.
 > Note: Custom drawable classes are only accessible from within
 > your application package. Other applications will not be able to load them.
@@ -428,7 +429,6 @@ class DrawableInflater {
 
 > 小结：我们简单阅读了DrawableInflater的源码，了解了Android如何从xml资源得到Drawable对象。需要注意的是，我们没有阅读Resource#getDrawable
 > 的相关源码，这一块内容也很有意思，建议读者有时间自行阅读下。
-
 
 ## 自定义一个Drawable
 
@@ -472,21 +472,20 @@ class LetterDrawable : Drawable() {
 字号字色，绘制字母的位置和内容都直接写死，
 
 定义资源：
+
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <osp.leobert.android.drawableworkshop.drawable.LetterDrawable
     xmlns:android="http://schemas.android.com/apk/res/android"
-    >
+>
 
 </osp.leobert.android.drawableworkshop.drawable.LetterDrawable>
 ```
 
 直接使用：得到结果：
 
+![version_1](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/version_1.png)
 ![version_1](./三思系列：重新认识Drawable/version_1.png)
-
-//TODO 远程图片
-
 
 
 ### version 2 支持颜色和字号等可配
@@ -496,6 +495,7 @@ class LetterDrawable : Drawable() {
 添加属性定义：
 
 ```xml
+
 <resources xmlns:tools="http://schemas.android.com/tools">
 
     <declare-styleable name="letter_drawable">
@@ -507,6 +507,7 @@ class LetterDrawable : Drawable() {
 
 </resources>
 ```
+
 这样我们就可以进行资源配置和解析
 
 按照我们之前阅读的代码，我们需要覆写`inflate`以实现属性解析
@@ -562,9 +563,11 @@ class LetterDrawable {
     }
 }
 ```
+
 并且我们利用属性代理来封装计算宽高的细节（*只是利用了小技巧，可以减少不必要的重复测量*）
 
 修改我们资源：
+
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <osp.leobert.android.drawableworkshop.drawable.LetterDrawable
@@ -581,11 +584,11 @@ class LetterDrawable {
 
 运行后我们得到这样的结果：
 ![version_2](./三思系列：重新认识Drawable/version_2.png)
+![version_2](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/version_2.png)
 
 ### version 3: 正确处理宽高
 
-我们发现Drawable的位置是有问题的，对于TextView，并没有在文字之上（drawableTop），
-对于ImageView，并没有居中（默认 ScaleType.FIT_CENTER）。
+我们发现Drawable的位置是有问题的，对于TextView，并没有在文字之上（drawableTop）， 对于ImageView，并没有居中（默认 ScaleType.FIT_CENTER）。
 
 ```kotlin
 class LetterDrawable {
@@ -627,7 +630,291 @@ class LetterDrawable {
 
 看一下结果：
 ![version_3](./三思系列：重新认识Drawable/version_3.png)
+![version_3](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/version_3.png)
 
+> 注：更多和Canvas和Paint的内容忽略，Padding和文字边距等细节忽略
+
+
+> 小结：这一小节到此基本可以结束了，我们用了三步实现了一个简单自定义Drawable，
+> 并且在比较常见的场景下进行了效果演示。读者可以在此基础上在对于padding等属性进行尝试，
+> 以及尝试绘制自己感兴趣的内容。
+
+## 自定义一个动画Drawable
+
+这一次，我们尝试让字从分散，开始聚拢，最终排列成一行。因为它的draw规则更加特殊，我们新建一个Drawable进行演示。
+
+还是在原来的项目上，version 直接递增
+
+### version 4: 先让一个字母动起来
+
+> 目标：让字母从一个随机的初始位置，匀速运动到终点位置。约定最终将文字绘制在中心
+
+我们建立一个新的类AnimLetterDrawable，迁移LetterDrawable中的主要逻辑，并实现`Runnable`接口，以实现**schedule** 时的主要逻辑； 实现`Animatable2`接口并完成动画相关逻辑
+
+```kotlin
+class AnimLetterDrawable : Drawable(), Animatable2, Runnable {
+    private var frameIndex = 0
+
+    private val totalFrames = 30 * 3 //3 second, 30frames per second
+    
+    private val animationCallbacks: MutableSet<Animatable2.AnimationCallback> = linkedSetOf()
+
+    private var mAnimating: Boolean = false
+
+    private fun setFrame(frame: Int, unschedule: Boolean, animate: Boolean) {
+        if (frame >= totalFrames) {
+            return
+        }
+        mAnimating = animate
+        frameIndex = frame
+
+        if (unschedule || animate) {
+            unscheduleSelf(this)
+        }
+        if (animate) {
+            // Unscheduling may have clobbered these values; restore them
+            frameIndex = frame
+
+            scheduleSelf(this, SystemClock.uptimeMillis() + durationPerFrame)
+        }
+        invalidateSelf()
+    }
+
+    private fun nextFrame(unschedule: Boolean) {
+        var nextFrame: Int = frameIndex + 1
+        val isLastFrame = nextFrame + 1 == totalFrames
+        if (nextFrame + 1 > totalFrames) {
+            nextFrame = totalFrames - 1
+        }
+
+        setFrame(nextFrame, unschedule, !isLastFrame)
+    }
+
+    private val durationPerFrame = 3000 / totalFrames
+
+    override fun start() {
+        Log.d(tag, "start called")
+        mAnimating = true
+
+        if (!isRunning) {
+            // Start from 0th frame.
+            setFrame(
+                frame = 0, unschedule = false, animate = false
+            )
+        } else {
+            setFrame(
+                frame = 0, unschedule = false, animate = true
+            )
+        }
+    }
+
+    override fun stop() {
+        mAnimating = false
+
+        if (isRunning) {
+            frameIndex = 0
+            //un-schedule it at first
+            unscheduleSelf(this)
+
+            setFrame(0, unschedule = true, animate = false)
+        }
+    }
+
+    override fun isRunning(): Boolean {
+        return mAnimating
+    }
+
+    override fun registerAnimationCallback(callback: Animatable2.AnimationCallback) {
+        animationCallbacks.add(callback)
+    }
+
+    override fun unregisterAnimationCallback(callback: Animatable2.AnimationCallback): Boolean {
+        return animationCallbacks.remove(callback)
+    }
+
+    override fun clearAnimationCallbacks() {
+        animationCallbacks.clear()
+    }
+
+    override fun run() {
+        Log.d(tag, "callback by schedule")
+        if (isRunning) {
+            nextFrame(false)
+        } else {
+            //safe call
+            setFrame(0, unschedule = true, animate = false)
+        }
+    }
+}
+```
+
+**这一段代码虽然有点长，但是逻辑很简单，阅读文章过程中，可以忽略这部分代码的细节**。
+
+显然，我们还需要实现：**正确绘制每一帧**
+
+在约定的目标中，每个字母从一个 **随机的初始位置**，**匀速运动** 到 **终点位置**。那么，对于任意一个字母，只需要确定 **四个参数**，即可确定其 **位置**
+
+* 总帧数
+* 当前帧数
+* 字母起始位置
+* 字母结束位置
+
+> 延伸：上面的例子中，我们约定了轨迹是直线，延伸开来，其实我们只需要一个 `location = f(time)` 的函数和`time`值即可确定其位置。
+>
+> 一般情况下，我们需要关心轨迹方程，和加速度公式。有加速度公式，我们按照时间积分得到`速度-时间`函数，再按照时间积分，得到 `移动距离-时间`函数，
+> 在有轨迹方程和起始点的情况下，就可以找到任意时间的位置，得到 `location = f(time)` 函数
+
+当然，因为我们的场景足够简单，`起始点`和`终点`确定的`线段`即为路径，运动为`匀速`，`当前时间` 通过 `当前帧`,`每帧时间`确定，达到总动画时长（最后一帧）时
+达到终点
+
+* `x = startX + (endX - startX) * time / totalTime`
+* `y = startY + (endY - startY) * time / totalTime`
+
+附上计算相关的源码： 运动过程中我是适当处理了文字的透明度
+
+```kotlin
+class AnimLetterDrawable : Drawable(), Animatable2, Runnable {
+    private val originalLetterLocations = SparseArray<PointF>()
+
+    private val finalLetterLocations = SparseArray<PointF>()
+
+    override fun draw(canvas: Canvas) {
+        Log.d(tag, "on draw,$letters , $height,$frameIndex")
+
+        val progress = if (totalFrames > 1) {
+            frameIndex.toFloat() / (totalFrames - 1).toFloat()
+        } else {
+            1f
+        }
+
+        paint.alpha = min(255, (255 * progress).toInt() + 100)
+
+        for (i in letters.indices) {
+            val endPoint: PointF = finalLetterLocations.get(i)
+            val startPoint: PointF = originalLetterLocations.get(i)
+            val x: Float = startPoint.x + (endPoint.x - startPoint.x) * progress
+            val y: Float = startPoint.y + (endPoint.y - startPoint.y) * progress
+            canvas.drawText(letters[i].toString(), x, y, paint)
+        }
+
+    }
+
+    override fun onBoundsChange(bounds: Rect) {
+        super.onBoundsChange(bounds)
+        Log.d(tag, "onBoundsChange, $bounds")
+
+        height = bounds.height().toFloat()
+        width = bounds.width().toFloat()
+
+        calcLetterStartEndLocations()
+
+        invalidateSelf()
+    }
+
+    private fun calcLetterStartEndLocations() {
+        originalLetterLocations.clear()
+        finalLetterLocations.clear()
+
+        val height = this.height ?: throw IllegalStateException("height cannot be null")
+        val width = this.width ?: throw IllegalStateException("width cannot be null")
+
+        val centerY: Float = height / 2f + paint.textSize / 2
+
+        val totalLength = paint.measureText(letters)
+        val startX = (width - totalLength) / 2
+
+        var currentStartX = startX
+
+        for (i in letters.indices) {
+            val str: String = letters[i].toString()
+            val currentLength: Float = paint.measureText(str)
+
+
+            originalLetterLocations.put(
+                i, PointF(
+                    Math.random().toFloat() * width, Math.random()
+                        .toFloat() * height
+                )
+            )
+
+            finalLetterLocations.put(i, PointF(currentStartX, centerY))
+            // TODO: 2021/2/1 consider padding for letters inner
+            currentStartX += currentLength
+
+        }
+    }
+}
+```
+
+最终我们看一下效果： 大约从第四秒开始点击了start，中间点击了stop，随后又点击了start
+
+![version_4](./三思系列：重新认识Drawable/version_4.gif)
+![version_4](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/version_4.gif)
+
+> 注：gif丢失了一定的连贯性，可以看一下录制的视频 
+> [链接](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/version_4.webm)
+> 因为起始位置是随机的，所以每次的效果都会有差别
+
+### version 5 让所有的字母都动起来
+
+其实细心的读者应该发现了，上面`Version 4`的代码已经可以让每个字母都动起来了。
+先来试一下效果，把Drawable资源的text改成Leobert，看一下效果:
+
+![version_5](./三思系列：重新认识Drawable/version_5.gif)
+![version_5](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/version_5.gif)
+
+录制视频：[链接](https://github.com/leobert-lan/Blog/blob/main/Android/Drawable/%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97%EF%BC%9A%E9%87%8D%E6%96%B0%E8%AE%A4%E8%AF%86Drawable/version_5.webm)
+
+可能有些读者这时候已经在思考，继续添加各种配置支持项，改变初始点的随机位置算法，计算过程中更加细致的考虑字号、文字留白等等等等细节了。
+
+**打住**，我们的目标是重新梳理Drawable中的知识，而不是实现一个特定的Drawable。到这里，我们已经实现了一个自定义的动画Drawable。
+
+## 最终总结和反思
+
+这篇文章中，我们梳理了Drawable的设计意图，自行梳理了Drawable子类概览，梳理了Drawable的API概览，练习了自定义Drawable。
+
+我们再思考几个问题：
+
+> 自定义View和自定义Drawable的区别是什么
+
+前者是对于视图的自定义，后者是对于绘制的自定义。`两者有一定的关联性`，因为视图也是需要通过视觉呈现给用户的，有很大一部和`绘制相关`；
+
+但自定义View不仅仅可以`自定义绘制`，还可以`自定义交互`，这一点是自定义Drawable不具备的。如果我们仅仅是期望对绘制进行自定义，选择自定义Drawable`即可`；
+
+相比于自定义View，自定义Drawable在应用内的`适用性更广`，它`具体`描述了一种`绘制`，所以，只要存在`绘制`机制的地方，理论上就可以使用它。
+
+
+> 各种"花里胡哨"的效果都可以这样干吗
+
+可以但不是所有的都建议。一些简单的场景，例如`一种点击特效`、`一种Progress效果` 是建议这样处理的。
+
+一些复杂的场景，例如启动图、固定的酷炫的转场等，是不建议这样处理的。`不是说不建议用自定义Drawable处理`，而是`不建议`
+再用`代码`去`直接描述Draw的内容`。
+
+对于复杂内容，可以对其内容进行抽象和分类，一般来说，我们可以从：
+
+* 静态、动态
+* 矢量描述、非矢量描述
+
+`两个维度`区分一个要绘制的内容；
+
+对于静态的，或者矢量描述的内容，已经有相关的类进行抽象描述。而对于动态的非矢量描述的绘制内容，
+它们往往`复杂`，而且很`具体`，用纯代码进行描述太糟糕了。应当建立抽象体系并结合中间物来描述它们。
+
+以大名鼎鼎的Lottie为例，设计使用AE创作动画文件，并导出成lottie的动画文件：
+
+* 不可矢量描述的、唯一命名的图
+* json格式封装的所有帧信息
+
+那么只需要描述：
+* 解析文件
+* 加载帧信息
+* 展示帧，即绘制帧
+* 按照动画时间和帧信息schedule
+
+即可。内容设计这种事情，就交给UI和UX了
+
+从技术梳理和博客的角度看，这篇文章的内容已经结束了，从商业投产的角度看，这篇文章的内容远没有结束
 
 
 
