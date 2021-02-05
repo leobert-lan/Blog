@@ -21,7 +21,15 @@
 > 
 > 理想归理想，最终还是会败给现实，这个问题就变成了`鱼和熊掌想要兼得`的问题
 
-我们下面会进行一定的展开，来体悟这个问题。
+为了让阅读的目标更加明确，我们先思考一个问题：
+
+![依赖关系](./三思系列：组件化场景下module依赖优雅实践方案/APP.png)
+
+这样一个项目依赖关系，如果做到`改动B` 的内容，却不需要重新编译A，运行APP，验证B的修改
+
+
+我们下面会进行一定地展开，来体悟这个问题。
+
 
 ## 为什么使用远程仓库中的依赖包比使用本地静态aar要方便
 
@@ -147,14 +155,14 @@ dependencies {
 **回到我们开始的问题**，将library发布时，按照约定，会将library本身的依赖收录到pom文件中。相应的，使用方使用
 仓库中的依赖项时，gradle会拉取其对应的pom文件，并添加依赖。
 
-所以，如果我们直接使用一个编译好的静态包，而丢弃了他对应的pom文件时，有很大的概率会丢失依赖，出现打包失败或者运行异常。
+所以，如果我们直接使用一个编译好的静态包，而丢弃了他对应的pom文件时，可能会丢失依赖，出现打包失败或者运行异常。
 这意味着我们需要人为维护依赖传递
 
 **我们记住这些内容，并先放到一边**。
 
 ## 下沉后，library会有多个层级
 
-> 例如：APP => A => B， 即APP依赖A，A依赖B，而A和B都是library
+> 例如图中：APP => A => B， 即APP依赖A，A依赖B，而A和B都是library
 
 我们知道，对于B，并不会有什么说法，只会出现在A和APP
 
@@ -192,5 +200,351 @@ implementation project(':B')
 假如我将A编译为静态包并发布到仓库，并运用了pom中的依赖描述，一定会得到无法找到:`Demo-B-unspecified.pom` 的问题。
 当然，这个问题可以通过`在APP中重新声明 B的依赖` 来解决。
 
-> 这意味着，我们需要时刻保持警惕，维护上层module的依赖。
+> 这意味着，我们需要时刻保持警惕，维护各个module的依赖。否则，我们无法同时享受：`静态包减少编译` & `随心的修改局部并集成测试`
+ 
+这显然是一件不人道主义的事情。
 
+反思一下，对于A而言，它需要B，但仅在两个时机需要：
+
+* 编译时受检，完成编译
+* 运行时
+
+作为一个library，它本身并不对应运行时，所以，`compileOnly` 是其声明对B的依赖的最佳方式。
+
+这意味着，最终对应`运行时` 的内容，即APP，需要在`编译时加入` 对B的依赖。在原先 A 使用 Api方式声明对B的依赖时，是通过gradle
+分析pom文件实现的依赖加入。而现在，需要`人为维护`，只需要实现 `人道主义`，就可以鱼和熊掌兼得。
+
+## 反思依赖传递的本质
+
+![依赖关系](./三思系列：组件化场景下module依赖优雅实践方案/APP.png)
+
+一般我们会像下面的演示代码一样声明依赖：
+
+```groovy
+//APP:
+implementation project('A')
+implementation project('Foo')
+
+//A:
+implementation project('B')
+implementation project('Bar')
+```
+
+因为依赖传递性，APP其实依赖了A，Foo，B，Bar。
+
+其实就是一颗树中，除去根节点的节点集合。而对于一个非根节点，它被依赖的形式只有两种：
+
+* 静态包，不需要重新编译，节约编译时间
+* module，需要再次编译，可以运用最新改动
+
+我们可以定义这样一个键值对信息：
+
+```groovy
+project.ext.depRules = [
+        "B": "p",
+        "A": "a"
+]
+```
+`"p"`代表使用project，`"a"`代表使用静态包。
+
+并将这颗树的内容表达出来：**我们先忽略掉Foo和Bar**
+
+```groovy
+project.ext.deps = [
+        "A"  : [
+                "B": [
+                        "p": project(':B'),
+                        "a": 'leobert:B:1.0.0'
+                ]
+        ],
+        "APP": [
+                "A": [
+                        "p": project(':A'),
+                        "a": 'leobert:A:1.0.0'
+                ]
+        ]
+].with(true) {
+    A.each { e ->
+        APP.put(e.key, e.value)
+    }
+}
+```
+
+以A为例，我们可以通过代码实现动态添加依赖：
+
+```groovy
+project.afterEvaluate { p ->
+        println("handle deps for:" + p)
+        deps.A.each { e ->
+            def rule = depRules.get(e.key)
+            println("find deps of A: rule is" + rule + " ,dep is:" + e.value.get(rule).toString())
+            project.dependencies.add("compileOnly", e.value.get(rule))
+        }
+    }
+```
+
+同理，对于APP：
+
+```groovy
+project.afterEvaluate { p->
+        println("handle deps for:" + p)
+        deps.APP.each { e ->
+            def rule = depRules.get(e.key)
+            println("find deps of App:rule is" + rule + " ,dep is:" + e.value.get(rule).toString())
+            project.dependencies.add("implementation", e.value.get(rule))
+        }
+    }
+```
+
+查看输出：
+
+> Configure project :A
+> 
+> handle deps for:project ':A'
+> 
+> find deps of A: rule isp ,dep is:project ':B'
+
+> Configure project :app
+> 
+> handle deps for:project ':app'
+> 
+> find deps of App:rule isa ,dep is:leobert:A:1.0.0
+> 
+> find deps of App:rule isp ,dep is:project ':B'
+
+这样，我们就可以通过修改对应节点的依赖方式配置而实现鱼和熊掌兼得。不再受pom文件的约束。
+
+当时，我们回到上面说的`不人道主义`之处，我们通过了`with` 函数，将A自身的依赖信息，注入到APP中。
+但是当树的规模变大时，人为维护就很累了。这是`必须要解决的`，当然，这很容易解决。我们直接使用递归处理即可
+
+## 贴近人的直观感受才优雅，逐步实现人道主义
+
+我们添加一个全局闭包：
+
+```groovy
+ext.utils = [
+        applyDependency: { project, e ->
+            def rule = depRules.get(e.key)
+            println("find deps of App:rule is " + rule + " ,dep is:" + e.value.get(rule).toString())
+            project.dependencies.add("implementation", e.value.get(rule))
+
+            try {
+                println("try to add sub deps of:" + e.key)
+                def sub = deps.get(e.key)
+                if (sub != null && sub.get("isEnd") != true) {
+                    sub.each { se ->
+                        ext.utils.applyDependency(project, se)
+                    }
+                }
+            } catch (Exception ignore) {
+
+            }
+        }
+]
+```
+
+注意，因为我们定义的依赖信息是：moduleName-> (moduleName -> (scopeName-> depInfo)) 的方式。
+
+这导致我们判断末端节点有一定的困难，即递归的尾部判断存在困难,我们需要人为标记一下末端节点
+
+这时，我们只需描述一下树即可：**同样忽略Foo，Bar**
+
+```groovy
+project.ext.deps = [
+        "A"  : [
+                "B": [
+                        "isEnd": true,
+                        "p"    : project(':B'),
+                        "a"    : 'leobert:B:1.0.0'
+                ]
+        ],
+        "APP": [
+                "A": [
+                        "p": project(':A'),
+                        "a": 'leobert:A:1.0.0'
+                ]
+        ]
+]
+```
+
+问题基本得到解决了，但是并不优雅。
+
+### 优雅，优雅，优雅
+
+我们不妨再修改一下对依赖树的描述方式，将节点信息和树结构分开，重新改进：
+
+更人道主义的依赖描述
+```groovy
+project.ext.deps = [
+        "A"  : ["B"],
+        "app": ["A"]
+]
+
+project.ext.modules = [
+        "A": [
+                "p": project(':A'),
+                "a": 'leobert:A:1.0.0'
+        ],
+        "B": [
+                "p"    : project(':B'),
+                "a"    : 'leobert:B:1.0.0'
+        ]
+]
+
+project.ext.depRules = [
+        "B": "p",
+        "A": "a"
+]
+```
+
+抽象添加依赖的过程，递归处理`每一个节点`的`依赖收集`，并`向宿主module添加`，当某个节点在ext.deps中没有任何依赖时，`归`：
+
+```groovy
+ext.utils = [
+            applyDependency: { project, scope, e ->
+                def rule = depRules.get(e)
+                def eInfo = ext.modules.get(e)
+                println("find deps of " + project + ":rule is " + rule + " ,dep is:" + eInfo.get(rule).toString())
+                project.dependencies.add(scope, eInfo.get(rule))
+
+                def sub = deps.get(e) //list deps of e
+                println("try to add sub deps of:" + e + " ---> " + sub)
+
+                if (sub != null && !sub.isEmpty()) {
+                    sub.each { dOfE ->
+                        ext.utils.applyDependency(project, scope, dOfE)
+                    }
+                }
+            }
+    ]
+```
+
+每个module只需要指定自己的scope：
+
+```groovy
+//:app
+project.afterEvaluate { p ->
+    println("handle deps for:" + p)
+    deps.get(p.name).each { e ->
+        rootProject.ext.utils.applyDependency(p,"implementation",e)
+    }
+}
+
+//:A
+project.afterEvaluate { p ->
+    println("handle deps for:" + p.name)
+    deps.get(p.name).each { e ->
+        rootProject.ext.utils.applyDependency(p,"compileOnly",e)
+    }
+}
+
+```
+只要不是独立运行的module，就是`compileOnly`，否则就是 `implementation`。
+
+输出也容易拍错：
+
+```shell
+> Configure project :A
+handle deps for:A
+find deps of project ':A':rule is p ,dep is:project ':B'
+try to add sub deps of:B ---> null
+
+> Configure project :app
+handle deps for:project ':app'
+find deps of project ':app':rule is a ,dep is:leobert:A:1.0.0
+try to add sub deps of:A ---> [B]
+find deps of project ':app':rule is p ,dep is:project ':B'
+try to add sub deps of:B ---> null
+```
+
+## 测试一个复杂场景
+
+我们再上图的基础上，让B和Foo依赖Base
+
+```groovy
+project.ext.deps = [
+        "app": ["A", "Foo"],
+        "A"  : ["B", "Bar"],
+        "Foo": ["Base"],
+        "B"  : ["Base"],
+]
+
+project.ext.modules = [
+        "A": [
+                "p": project(':A'),
+                "a": 'leobert:A:1.0.0'
+        ],
+        "B": [
+                "p": project(':B'),
+                "a": 'leobert:B:1.0.0'
+        ],
+        "Foo": [
+                "p": project(':Foo'),
+        ],
+        "Bar": [
+                "p": project(':Bar'),
+        ],
+        "Base": [
+                "p": project(':Base'),
+        ]
+]
+
+project.ext.depRules = [
+        "B"   : "p",
+        "A"   : "a",
+        "Foo" : "p",
+        "Bar" : "p",
+        "Base": "p"
+]
+```
+
+```shell
+> Configure project :A
+handle deps for:A
+find deps of project ':A':rule is p ,dep is:project ':B'
+try to add sub deps of:B ---> [Base]
+find deps of project ':A':rule is p ,dep is:project ':Base'
+try to add sub deps of:Base ---> null
+find deps of project ':A':rule is p ,dep is:project ':Bar'
+try to add sub deps of:Bar ---> null
+
+> Configure project :app
+handle deps for:project ':app'
+find deps of project ':app':rule is a ,dep is:leobert:A:1.0.0
+try to add sub deps of:A ---> [B, Bar]
+find deps of project ':app':rule is p ,dep is:project ':B'
+try to add sub deps of:B ---> [Base]
+find deps of project ':app':rule is p ,dep is:project ':Base'
+try to add sub deps of:Base ---> null
+find deps of project ':app':rule is p ,dep is:project ':Bar'
+try to add sub deps of:Bar ---> null
+find deps of project ':app':rule is p ,dep is:project ':Foo'
+try to add sub deps of:Foo ---> [Base]
+find deps of project ':app':rule is p ,dep is:project ':Base'
+try to add sub deps of:Base ---> null
+
+> Configure project :Bar
+handle deps for:Bar
+
+> Configure project :Base
+handle deps for:Base
+
+> Configure project :Foo
+handle deps for:Foo
+find deps of project ':Foo':rule is p ,dep is:project ':Base'
+try to add sub deps of:Base ---> null
+```
+
+> 随着，树规模的增大，阅读依赖关系还算明显，但是阅读日志，又不太优雅了。
+
+## 总结和展望
+
+我们通过探寻，发现了一种可以 `鱼和熊掌兼得` 地依赖处理方式，让我们在Android领域组件化场景下（单项目，多module），能够灵活地切换：
+* 静态包依赖，缩短编译时间
+* 项目依赖，快速部署变更进行集成测试
+
+对了，上面我们没有重点提到如何切换，其实非常地简单：
+只需要修改 `project.ext.depRules` 中对应的配置项即可。
+
+如果后面还有闲情逸致的话，可以再写一个studio的插件，获取 `dependency.gradle` 的信息，
+输出可视化的依赖树；rule配置，直接做成多个开关，`优雅，永不过时`。
