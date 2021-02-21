@@ -625,12 +625,11 @@ I/TestRunner: finished: testMeasure(osp.leobert.blog.code.ViewTest)
 > > 2. 思考了描述尺寸的 `两种方式` 、`三种取值类型`，并延伸出 `测量` `视图树` 每个节点的 `显示大小` 问题。
 >
 > 从现实角度出发，得出一种测量方式，并进行了优化，得出结论：
-> * 测量过程从 Parent 到 Child，Parent 结合自身情况和 Child的情况，为 Child 决定测量的`模式` 即 `mode`，
-    > 已经 `EXACTLY` 模式下的精准值 和 `AT_MOST` 模式下的 `最大值` 参考值
-    >
-* 从 Parent 到 Child 表现为：测量的入口为 `measure()`，其中封装了调用自身`onMeasure()` 的逻辑,
-  > 具体ViewGroup 类覆写 `onMeasure()` 并调用 Child的 `measure()` 方法,传递测量过程
+> * 测量过程从 Parent 到 Child。Parent 结合自身情况和 Child的情况，为 Child 决定测量的`模式` 即 `mode`， 以及 `EXACTLY` 模式下的精准值 和 `AT_MOST` 模式下的 `最大值` 参考值
+>
+>   * 从 Parent 到 Child 表现为：测量的入口为 `measure()`，其中封装了调用自身`onMeasure()` 的逻辑, 具体ViewGroup 类覆写 `onMeasure()` 并调用 Child的 `measure()` 方法,传递测量过程
 >   * 显示大小的 `测量` 和 `布局规则` 有关
+> 
 > * 通过一次递归即可测量出视图树每个节点的显示大小
 >
 > 至此，我们对这套测量机制已经有了足够的认知，但是请注意，它还没有被完善。
@@ -716,7 +715,8 @@ class FrameLayout : ViewGroup() {
 > 于是，在ViewGroup 体系中，设计了：
 > * checkLayoutParams(layoutParams: ViewGroup.LayoutParams): Boolean
 > * generateDefaultLayoutParams(): ViewGroup.LayoutParams
-    > 我们可以采用两种契约：
+> 
+> 我们可以采用两种契约：
 > * 输入的LayoutParams 必须满足约束，否则抛出异常
 > * 输入的LayoutParams 需要满足约束，否则使用默认规则
 
