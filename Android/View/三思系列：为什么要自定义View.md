@@ -6,9 +6,9 @@
 > 
 > 这一篇，不仅仅是对一个面试必会题的解析，更是透过这个问题的思考，寻找 `最佳实践` ，`拓展思维角度` ， `少走弯路`
 
-[关于三思系列](https://github.com/leobert-lan/Blog/blob/main/info/%E5%85%B3%E4%BA%8E%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97.md)
+> 三思系列是我最新的学习、总结形式，着重于:**问题分析**、**技术积累**、**视野拓展**，[关于三思系列](https://github.com/leobert-lan/Blog/blob/main/info/%E5%85%B3%E4%BA%8E%E4%B8%89%E6%80%9D%E7%B3%BB%E5%88%97.md)
 
-[关于View系列](https://github.com/leobert-lan/Blog/blob/main/info/%E5%85%B3%E4%BA%8EView%E7%B3%BB%E5%88%97.md)
+> [关于View系列](https://github.com/leobert-lan/Blog/blob/main/info/%E5%85%B3%E4%BA%8EView%E7%B3%BB%E5%88%97.md)
 View系列旨在通过 `对现实问题` 的思考，建立完善的 `View体系认知`，极力建议读者了解一下 `我为什么撰写、分享这个系列`
 
 先给出思考这个问题的 `脑图` ，文章内容会按照思考过程展开
@@ -82,5 +82,67 @@ Android中ViewGroup来封装布局规则，并提供了一套Layout。
 
 ### 继承View，扩展内容显示能力
 
+一般来说，少数情况下，`继承View` 或者 `特定的Widget` 是为了扩展 `布局尺寸上的特性`，这基本是从 `measure机制` 上入手。除此之外，一些场景下，
+可以通过 `继承View` 实现 `自定义内容绘制`。
 
+例如，显示图表的View。
 
+这种场景下，一般需要处理：
+
+* 尺寸测量流程中，`Content`的尺寸测量，并在 `onMeasure` 中实现：测量模式为 `AT_MOST` 或 `UNSPECIFIED` 时，利用Content的大小确定显示尺寸。
+* 绘制流程中，`onDraw` 中实现内容的绘制
+
+> 注意: 如果并不牵涉到 `交互`，这并不是唯一方案，`自定义Drawable`的方案，也是很棒的方案。
+
+借用 `PhotoView` 举个例子，如果交互局限为：`双指缩放`，`拖拽`，`单击`，`双击`。
+
+那么通过 `OnTouchListener` + `GestureDetector` + `自定义Drawable`， 对于绝大多数场景，都可以胜任。
+
+## 扩展交互功能
+
+在这个方向上，主要还是和 `事件处理` 体系有关。在 `View体系` 中，存在`三个方法` 和这个过程直接相关：
+
+* dispatchTouchEvent
+* onInterceptTouchEvent
+* onTouchEvent
+
+对于 `onInterceptTouchEvent`，`非ViewGroup` 的 `View子类` 是不参与的，因为这部分View，已经是事件处理的末端。
+
+话分两头。
+
+### 对于ViewGroup
+
+扩展的目的一般有二：
+* 在恰当的场景下，拦截事件并自身处理，处理逻辑在 `onTouch` 中实现
+* 处理可能存在的 `事件处理冲突`，当然，按照Android的规则，利用 `requestDisallowInterceptTouchEvent` 可以要求 `直系的` 所有 `Parent` 不拦截事件。
+  但难免有意外，可以通过 `onInterceptTouchEvent` 来决定是否自身拦截处理事件，或者更加复杂的场景。
+  
+
+### 对于View而言
+
+扩展的目的在于 `定义事件的含义`
+
+> 举个例子，继承View实现一个字母表导航控件，`点击`、`滑动` 被定义为切换到 `对应的字母` 进行导航
+
+我们需要在 `onTouchEvent` 中进行处理。
+
+---
+
+在前面，我们提到了 `PhotoView` 的例子，如果：`事件` 的含义 `足够抽象`，例如，对View 进行了：
+* 单击
+* 双击
+* 拖拽
+* 缩放
+
+而不是 `点击了View的特定区域`，`滑动至View的特定位置` 等。 我们可以利用 `Android屏幕事件处理机制` 中的 `OnTouchListener` 来获取事件信息，
+并进行处理。在这种做法中，利用 `GestureDetector` 可以大大降低这一过程的难度。
+
+## 总结
+
+这一篇中，我们比较 `随性` 的思考了 `为什么要自定义View` 的问题，并展开了：
+
+* 为什么需要这么干
+* 具体做法
+* 是否有其他方案，并简单交代了 `哪种方案更适合`
+
+这篇文章比较短，但是这部分内容的背后，还是值得继续深究、挖掘的
