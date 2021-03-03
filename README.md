@@ -12,7 +12,9 @@
 
     * Drawable
         * [三思系列：重新认识Drawable](./Android/Drawable/三思系列：重新认识Drawable.md)
-        * [好玩系列：拥有它，XML文件少一半--更方便的处理View背景.md](Android/Drawable/好玩系列：拥有它，XML文件少一半--更方便的处理View背景.md)
+        * [好玩系列：拥有它，XML文件少一半--更方便的处理View背景.md](./Android/Drawable/好玩系列：拥有它，XML文件少一半--更方便的处理View背景.md)
+    * 消息机制
+        * [三思系列：挖一挖消息机制，这些bug就不会犯](./Android/Mechanism/Message/三思系列：挖一挖消息机制，这些bug就不会犯.md)
 * Gradle
     * 组件化
         * [三思系列：组件化场景下module依赖优雅实践方案](./Gradle/Modularization/三思系列：组件化场景下module依赖优雅实践方案.md)
