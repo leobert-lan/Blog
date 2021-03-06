@@ -16,14 +16,14 @@
 
 按照经验，中文往往比英文具有 `更强的表达力` ，这也意味着：中文的 `凝练度更高`，也更容易产生理解误差，我们结合英文一起看
 
-* 声明式 declarative 
+* 声明式 declarative
 
 > **a declarative [sentence](https://www.ldoceonline.com/dictionary/sentence) has the form of a [statement](https://www.ldoceonline.com/dictionary/statement)**.
-> 
+>
 > statement: 4条释义，看第一条
 > * **something you say or write, especially publicly or officially, to let people know your intentions or opinions, or to record facts**
 > * 其他三条略
-  
+
 * 命令式 [imperative](https://www.ldoceonline.com/dictionary/imperative)
 
 > *technical*, an imperative verb is one that expresses an order, such as ‘stand up’
@@ -160,7 +160,7 @@ UI系统需要处理两个范畴的事情：
 很大一方面是Java语言特性的原因，最开始，都是使用Java语言编写业务逻辑，而基于Java，很难直接定义DSL
 
 > 注：`Java语言很难直接定义DSL` 这一点我并没有做严格的调研考证，如果有谬误，请指出。
-> 
+>
 > 而基于Groovy等语言开发符合 `DSL` 的 `声明式UI框架`，必然要引入Groovy，这在当时也和 `主流` 格格不入，虽然Google很喜欢创新。
 
 所以，官方提出了 `布局` 和 `业务` 分开，这样也有很多好处：
@@ -188,12 +188,13 @@ UI系统需要处理两个范畴的事情：
 
 ## 扣题：勘误
 
-再看到这些说法，我们可以判断出它们是 `谬误`：
+再看到这些说法，我们可以判断出它们存在 `谬误`：
 
 * 基于xml无法实现声明式UI
 * xml被淘汰是因为无法实现声明式UI
 * 基于xml布局方式都是命令式
 * 声明式一定会取代命令式，你看xml都要被淘汰了
+* 用代码写的就是命令式UI
 
 等。
 
@@ -211,6 +212,6 @@ UI系统需要处理两个范畴的事情：
 `准确` 。相应的，学习新内容时也会 `更加轻松`、`事半功倍`
 
 > 进一步延伸, 在学习Compose，思考Compose的优劣时，势必会上升到 `OOP` 和 `FP` 两大编程范式的讨论。这一篇不再展开。
-> 
+>
 > 点赞关注收藏，从此不迷路。
 
