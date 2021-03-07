@@ -776,6 +776,22 @@ fun View.daVinCi(
 
 </layout>
 ```
+粗糙的Demo效果，见笑了： *感谢读者`鲁班贼六`同学提醒我补充效果图*
+
+![demo](./好玩系列：拥有它，XML文件少一半--更方便的处理View背景/demo2.png)
+
+甚至可以玩杂耍，直接使用字符串形式的DSL内容：
+
+```kotlin
+binding.test2.setOnClickListener {
+    it.daVinCi("shape:[ gradient:[ type:linear;startColor:#ff3c08;endColor:#353538 ];" +
+            " st:[ Oval ]; corners:[ 40dp ]; stroke:[ width:4dp;color:rc/colorAccent ] ]")
+}
+```
+
+注意，这个方式不推荐使用，很不利于维护，就是 `杂耍`，可以直接更新背景：
+
+![demo3](./好玩系列：拥有它，XML文件少一半--更方便的处理View背景/demo3.png)
 
 ## 总结和展望
 
