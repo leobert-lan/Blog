@@ -304,7 +304,7 @@ int Looper::pollOnce(int timeoutMillis, int* outFd, int* outEvents, void** outDa
 }
 
 ```
-先处理Native层滞留的Response，然后调用pollInner获取 `消息` 的指针。这里的细节比较复杂，稍后我们在 `Looper解析` 中进行脑暴。
+先处理Native层滞留的Response，然后调用pollInner。这里的细节比较复杂，稍后我们在 [Native Looper解析](#native_looper) 中进行脑暴。
 
 
 > 先于此处细节分析，我们知道，调用一个方法，这是`阻塞的` ，用大白话描述即在方法返回前，调用者在 `等待`。
@@ -759,6 +759,10 @@ class Handler {
 
 如果有 `Handler callback`，则交给callback处理，否则自己处理，如果没覆写 `handleMessage` ，消息相当于被 drop 了。
 
+消息发送部分可以结合下图梳理：
+
+![send_msg](三思系列：Android的消息机制，一文吃透/send_msg.webp)
+
 ---
 > 阶段性小结,至此，我们已经对 `Framework层的消息机制` 有一个完整的了解了。
 > 前面我们梳理了：
@@ -771,8 +775,248 @@ class Handler {
 > * 消息队列机制服务于 `线程级别`，即一个线程有一个工作中的消息队列即可，当然，也可以没有。
 > 即，一个Thread `至多有` 一个工作中的Looper。
 > * Looper 和 Java层MQ `一一对应`
-> * Handler 是MQ的入口，也是消息的处理者
-> * 消息-- `Message` ``
+> * Handler 是MQ的入口，也是 `消息` 的处理者
+> * 消息-- `Message` 应用了 `享元模式`，自身信息足够，满足 `自洽`，创建消息的开销性对较大，所以利用享元模式对消息对象进行复用。
+
+下面我们再继续探究细节，解决前面语焉不详处留下的疑惑：
+
+* 消息的类型和本质
+* Native层Looper 的pollInner
+
+---
+
+## 消息的类型和本质
+
+message中的几个重要成员变量：
+
+```java
+class Message {
+   
+    public int what;
+    
+    public int arg1;
+    
+    public int arg2;
+    
+    public Object obj;
+
+    public Messenger replyTo;
+
+    /*package*/ int flags;
+    
+    public long when;
+
+    /*package*/ Bundle data;
+
+    /*package*/ Handler target;
+
+    /*package*/ Runnable callback;
+
+}
+```
+
+其中 target是 `目标`，如果没有目标，那就是一个特殊的消息： `同步屏障` 即 `barrier`；
+
+what 是消息标识
+arg1 和 arg2 是开销较小的 `数据`，如果 `不足以表达信息`  则可以放入 `Bundle data` 中。
+
+replyTo 和 obj 是跨进程传递消息时使用的，暂且不看。
+
+flags 是 message 的状态标识，例如 `是否在使用中`，`是否是同步消息`
+
+> 上面提到的同步屏障，即 barrier，其作用是拦截后面的 `同步消息` 不被获取，在前面阅读Java层MQ的next方法时读到过。
+> 
+> 我们还记得，next方法中，使用死循环，尝试读出一个满足处理条件的消息，如果取不到，因为死循环的存在，调用者（Looper）会被一直阻塞。
+
+此时可以印证一个结论，消息按照 `功能分类` 可以分为 `三种`：
+
+* 普通消息
+* 同步屏障消息
+* 异步消息
+
+其中同步消息是一种内部机制。设置屏障之后需要在合适时间取消屏障，否则会导致 `普通消息永远无法被处理`，而取消时，需要用到设置屏障时返回的token。
+
+## <a id="native_looper">Native层Looper</a>
+
+相信大家都对 `Native层` 的Looper产生兴趣了，想看看它在Native层都干些什么。
+
+对完整源码感兴趣的可以看这里，下面我们节选部分进行阅读。
+
+前面提到了Looper的pollOnce，处理完搁置的Response之后，会调用pollInner获取消息
+
+```cpp
+int Looper::pollInner(int timeoutMillis) {
+#if DEBUG_POLL_AND_WAKE
+    ALOGD("%p ~ pollOnce - waiting: timeoutMillis=%d", this, timeoutMillis);
+#endif
+
+    // Adjust the timeout based on when the next message is due.
+    if (timeoutMillis != 0 && mNextMessageUptime != LLONG_MAX) {
+        nsecs_t now = systemTime(SYSTEM_TIME_MONOTONIC);
+        int messageTimeoutMillis = toMillisecondTimeoutDelay(now, mNextMessageUptime);
+        if (messageTimeoutMillis >= 0
+                && (timeoutMillis < 0 || messageTimeoutMillis < timeoutMillis)) {
+            timeoutMillis = messageTimeoutMillis;
+        }
+#if DEBUG_POLL_AND_WAKE
+        ALOGD("%p ~ pollOnce - next message in %lldns, adjusted timeout: timeoutMillis=%d",
+                this, mNextMessageUptime - now, timeoutMillis);
+#endif
+    }
+
+    // Poll.
+    int result = ALOOPER_POLL_WAKE;
+    mResponses.clear();
+    mResponseIndex = 0;
+
+    struct epoll_event eventItems[EPOLL_MAX_EVENTS];
+    
+    //注意 1
+    int eventCount = epoll_wait(mEpollFd, eventItems, EPOLL_MAX_EVENTS, timeoutMillis);
+
+    // Acquire lock.
+    mLock.lock();
+
+// 注意 2
+    // Check for poll error.
+    if (eventCount < 0) {
+        if (errno == EINTR) {
+            goto Done;
+        }
+        ALOGW("Poll failed with an unexpected error, errno=%d", errno);
+        result = ALOOPER_POLL_ERROR;
+        goto Done;
+    }
+
+// 注意 3
+    // Check for poll timeout.
+    if (eventCount == 0) {
+#if DEBUG_POLL_AND_WAKE
+        ALOGD("%p ~ pollOnce - timeout", this);
+#endif
+        result = ALOOPER_POLL_TIMEOUT;
+        goto Done;
+    }
+
+//注意 4
+    // Handle all events.
+#if DEBUG_POLL_AND_WAKE
+    ALOGD("%p ~ pollOnce - handling events from %d fds", this, eventCount);
+#endif
+
+    for (int i = 0; i < eventCount; i++) {
+        int fd = eventItems[i].data.fd;
+        uint32_t epollEvents = eventItems[i].events;
+        if (fd == mWakeReadPipeFd) {
+            if (epollEvents & EPOLLIN) {
+                awoken();
+            } else {
+                ALOGW("Ignoring unexpected epoll events 0x%x on wake read pipe.", epollEvents);
+            }
+        } else {
+            ssize_t requestIndex = mRequests.indexOfKey(fd);
+            if (requestIndex >= 0) {
+                int events = 0;
+                if (epollEvents & EPOLLIN) events |= ALOOPER_EVENT_INPUT;
+                if (epollEvents & EPOLLOUT) events |= ALOOPER_EVENT_OUTPUT;
+                if (epollEvents & EPOLLERR) events |= ALOOPER_EVENT_ERROR;
+                if (epollEvents & EPOLLHUP) events |= ALOOPER_EVENT_HANGUP;
+                pushResponse(events, mRequests.valueAt(requestIndex));
+            } else {
+                ALOGW("Ignoring unexpected epoll events 0x%x on fd %d that is "
+                        "no longer registered.", epollEvents, fd);
+            }
+        }
+    }
+Done: ;
+
+// 注意 5
+    // Invoke pending message callbacks.
+    mNextMessageUptime = LLONG_MAX;
+    while (mMessageEnvelopes.size() != 0) {
+        nsecs_t now = systemTime(SYSTEM_TIME_MONOTONIC);
+        const MessageEnvelope& messageEnvelope = mMessageEnvelopes.itemAt(0);
+        if (messageEnvelope.uptime <= now) {
+            // Remove the envelope from the list.
+            // We keep a strong reference to the handler until the call to handleMessage
+            // finishes.  Then we drop it so that the handler can be deleted *before*
+            // we reacquire our lock.
+            { // obtain handler
+                sp<MessageHandler> handler = messageEnvelope.handler;
+                Message message = messageEnvelope.message;
+                mMessageEnvelopes.removeAt(0);
+                mSendingMessage = true;
+                mLock.unlock();
+
+#if DEBUG_POLL_AND_WAKE || DEBUG_CALLBACKS
+                ALOGD("%p ~ pollOnce - sending message: handler=%p, what=%d",
+                        this, handler.get(), message.what);
+#endif
+                handler->handleMessage(message);
+            } // release handler
+
+            mLock.lock();
+            mSendingMessage = false;
+            result = ALOOPER_POLL_CALLBACK;
+        } else {
+            // The last message left at the head of the queue determines the next wakeup time.
+            mNextMessageUptime = messageEnvelope.uptime;
+            break;
+        }
+    }
+
+    // Release lock.
+    mLock.unlock();
+
+//注意 6
+    // Invoke all response callbacks.
+    for (size_t i = 0; i < mResponses.size(); i++) {
+        Response& response = mResponses.editItemAt(i);
+        if (response.request.ident == ALOOPER_POLL_CALLBACK) {
+            int fd = response.request.fd;
+            int events = response.events;
+            void* data = response.request.data;
+#if DEBUG_POLL_AND_WAKE || DEBUG_CALLBACKS
+            ALOGD("%p ~ pollOnce - invoking fd event callback %p: fd=%d, events=0x%x, data=%p",
+                    this, response.request.callback.get(), fd, events, data);
+#endif
+            int callbackResult = response.request.callback->handleEvent(fd, events, data);
+            if (callbackResult == 0) {
+                removeFd(fd);
+            }
+            // Clear the callback reference in the response structure promptly because we
+            // will not clear the response vector itself until the next poll.
+            response.request.callback.clear();
+            result = ALOOPER_POLL_CALLBACK;
+        }
+    }
+    return result;
+}
+```
+上面标记了注意点
+
+* 1 epoll机制，等待 `mEpollFd` 产生事件, 这个等待具有超时时间。
+* 2，3，4 是等待的三种结果，`goto` 语句可以直接跳转到 `标记` 处
+* 2 检测poll `是否出错`，如果有，跳转到 Done
+* 3 检测pool `是否超时`，如果有，跳转到 Done
+* 4 处理epoll后所有的事件
+* 5 处理 pending 消息的回调
+* 6 处理 所有 Response的回调
+
+并且我们可以发现返回的结果有以下几种：
+* ALOOPER_POLL_WAKE
+* ALOOPER_POLL_ERROR
+
+
+当上层发消息时且判断需要唤醒,则会往管道的读端写入数据用于唤醒(详见6.2.3);
+检测poll是否出错;
+检测poll是否超时;
+
+如果是因为往管道读端写入数据被唤醒,则都去并清空管道中的数据;
+
+
+
+
 
 
 repo init -u git://mirrors.ustc.edu.cn/aosp/platform/manifest -b android-9.0.0_r8
