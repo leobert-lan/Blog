@@ -8,7 +8,7 @@
 * MagicBox -- `注解` + `运行时反射` 简化SaveInstanceState样板代码
 * JSBridge -- 基于消息队列机制建立Android和WebView桥接
 * RetrofitExt -- `注解` + `APT` + `动态代理` 实现Retrofit请求生命周期管理
-* DDAndroidComponent组件化套件
+* DDComponentForAndroid(后改为JIMU)组件化套件
     * Gradle Plugin 优化
     * 路由中间件
     * 消息中间件
